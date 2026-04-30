@@ -22,11 +22,11 @@ Safe to re-run; it skips anything already installed.
 ## Directory Structure
 
 ```
-config/
+dotfiles/
 ├── dotfiles/                   # Configuration files (organized by tool)
 │   ├── cheatsheets/            # Personal reference notes (git, kubectl)
 │   ├── ghostty/config
-│   ├── llama-swap/config.yaml
+│   ├── llama-swap/config.yaml.example   # Template; real config.yaml is gitignored
 │   ├── nvim/                   # LazyVim-based Neovim config
 │   ├── opencode/               # Opencode TUI config + tokyonight-transparent theme
 │   ├── skhd/                   # .skhdrc + .desktop_skhdrc + .laptop_skhdrc
