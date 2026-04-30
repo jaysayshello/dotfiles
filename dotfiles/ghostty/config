@@ -1,0 +1,11 @@
+font-family = FiraCode Nerd Font
+font-size = 20
+background = #1e1e2e
+background-blur-radius = 20
+mouse-hide-while-typing = true
+macos-option-as-alt = true
+unfocused-split-opacity = 0.55
+copy-on-select = clipboard
+mouse-shift-capture = never
+background-opacity = 0.9
+background-blur = 15

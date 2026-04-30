@@ -1,0 +1,41 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/mostlygeek/llama-swap/refs/heads/main/config-schema.json
+#
+# Copy to config.yaml and fill in real proxy URLs. The actual config.yaml is
+# gitignored so per-machine endpoints (LAN IPs, public IPs, etc.) stay private.
+#
+# llama-swap topology (pure routing — no process management):
+#   - local-mac:       launchd-managed llama-server on :8080 (model set in com.llamaserver.plist)
+#   - desktop-ollama:  remote Ollama at a public/remote endpoint
+#   - lan-ollama:      remote Ollama on the local network
+
+healthCheckTimeout: 30
+logLevel: info
+
+peers:
+  local-mac:
+    proxy: http://127.0.0.1:8080
+    models:
+      - "qwen-mac:35b-a3b"
+    timeouts:
+      connect: 5
+      responseHeader: 180
+      idleConn: 90
+
+  desktop-ollama:
+    proxy: http://REMOTE_HOST:11434
+    models:
+      - "gemma4-remote:26b"
+      - "qwen3.6:35b-a3b"
+    timeouts:
+      connect: 10
+      responseHeader: 180
+      idleConn: 90
+
+  lan-ollama:
+    proxy: http://LAN_HOST:11434
+    models:
+      - "gemma4-lan:26b"
+    timeouts:
+      connect: 5
+      responseHeader: 180
+      idleConn: 90

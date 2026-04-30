@@ -1,0 +1,15 @@
+.DS_Store
+.conductor/
+.wrangler/
+scripts/sync-dotfiles.log
+
+# Secrets / credentials (defensive)
+.env
+.env.*
+*.local
+*.pem
+*.key
+.secrets
+
+# Per-machine endpoints (LAN IPs, public IPs)
+dotfiles/llama-swap/config.yaml

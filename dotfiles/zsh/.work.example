@@ -1,0 +1,20 @@
+# Template for ~/.work — copy to $HOME and fill in:
+#   cp dotfiles/zsh/.work.example ~/.work
+#
+# Sourced from .zshrc if present. Use this for employer-specific env vars,
+# PATH entries, and functions that shouldn't live in the public dotfiles repo.
+
+# Repo roots branches() should search (colon-separated)
+# export WORK_REPO_ROOTS="$HOME/Github/your-employer"
+
+# GitHub org prs() should filter to (omit to show all your PRs)
+# export WORK_GITHUB_ORG="your-employer"
+
+# Remote services for status_model() — newline-separated "name:port:host"
+# export REMOTE_SERVICES_LINES=$'Ollama:11434:10.0.0.42\nLLM2:8080:10.0.0.43'
+
+# Work-only PATH entries
+# export PATH="/path/to/work/tooling:$PATH"
+
+# Work-only functions can also live here, e.g. ticket-creation helpers
+# function ticket() { ... }
