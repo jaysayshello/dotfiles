@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-REPO="$HOME/Github/jaysayshello/config"
+REPO="$HOME/Github/jaysayshello/dotfiles"
 cd "$REPO"
 
 git add .

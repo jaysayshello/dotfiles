@@ -65,12 +65,12 @@ function dump() {
   echo "Dumped Desktop to $month_folder"
 }
 
-alias cheat='zed $HOME/Github/jaysayshello/config/dotfiles/cheatsheets'
+alias cheat='zed $HOME/Github/jaysayshello/dotfiles/dotfiles/cheatsheets'
 alias ip='curl icanhazip.com'
 alias knownhosts='cd ~/.ssh'
 alias wm='launchctl kickstart -k "gui/$(id -u)/com.koekeishiya.yabai"; launchctl kickstart -k "gui/$(id -u)/com.koekeishiya.skhd"'
-alias desktop='bash $HOME/Github/jaysayshello/config/scripts/desktop.sh'
-alias laptop='bash $HOME/Github/jaysayshello/config/scripts/laptop.sh'
+alias desktop='bash $HOME/Github/jaysayshello/dotfiles/scripts/desktop.sh'
+alias laptop='bash $HOME/Github/jaysayshello/dotfiles/scripts/laptop.sh'
 alias proxy='export HTTP_PROXY=http://127.0.0.1:8080; export HTTPS_PROXY=http://127.0.0.1:8080;'
 alias unproxy='unset HTTP_PROXY; unset HTTPS_PROXY'
 alias claude='claude --permission-mode bypassPermissions'
@@ -96,7 +96,7 @@ alias fix='git add . && git commit -m "fix" && git push origin HEAD'
 alias rebase='git fetch --all && git rebase origin/main && git push --force-with-lease origin $(git branch --show-current)'
 
 function dotfiles() {
-    local repo="$HOME/Github/jaysayshello/config"
+    local repo="$HOME/Github/jaysayshello/dotfiles"
     cd "$repo" || return 1
     git add .
     if git diff --cached --quiet; then
@@ -310,8 +310,8 @@ function slackpr() {
 }
 
 # Cheat sheets
-alias gitcheat='zed $HOME/Github/jaysayshello/config/dotfiles/cheatsheets/git.md'
-alias kubecheat='zed $HOME/Github/jaysayshello/config/dotfiles/cheatsheets/kubectl.md'
+alias gitcheat='zed $HOME/Github/jaysayshello/dotfiles/dotfiles/cheatsheets/git.md'
+alias kubecheat='zed $HOME/Github/jaysayshello/dotfiles/dotfiles/cheatsheets/kubectl.md'
 
 . "$HOME/.local/bin/env"
 

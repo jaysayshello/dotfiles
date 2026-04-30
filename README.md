@@ -5,8 +5,8 @@ My personal macOS development environment setup with window management, dotfiles
 ## Quick Start
 
 ```bash
-git clone https://github.com/jaysayshello/config.git ~/Github/jaysayshello/config
-cd ~/Github/jaysayshello/config
+git clone https://github.com/jaysayshello/dotfiles.git ~/Github/jaysayshello/dotfiles
+cd ~/Github/jaysayshello/dotfiles
 ./install.sh
 ```
 
