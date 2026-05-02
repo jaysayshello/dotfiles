@@ -145,6 +145,18 @@ function ghfile() {
 # Functions
 # ============================================================================
 
+# Jump to nvim's last-saved cwd (written by a DirChanged autocmd in init)
+function cdnv() {
+  local f=~/.nvim-cwd
+  [[ -r $f ]] || { echo "no nvim cwd recorded yet" >&2; return 1; }
+  cd "$(<"$f")"
+}
+
+# Manually record the current shell's cwd as nvim's cwd
+function nvcd() {
+  pwd > ~/.nvim-cwd
+}
+
 # Attach to existing tmux session or create new
 function tmux() {
   if command tmux has-session 2>/dev/null; then
