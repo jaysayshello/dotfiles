@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SESSION="Code"
+START_DIR="${HOME}/Github"
+
+if ! tmux has-session -t="${SESSION}" 2>/dev/null; then
+  exit 0
+fi
+
+# Classify existing panes by position:
+#   top-left  → nvim slot
+#   bot-left  → zsh slot
+#   right     → claude slot
+NVIM_ID=""
+ZSH_ID=""
+CLAUDE_ID=""
+
+while IFS=$'\t' read -r pid left top; do
+  if [ "${left}" -gt 0 ]; then
+    CLAUDE_ID="${pid}"
+  elif [ "${top}" -gt 0 ]; then
+    ZSH_ID="${pid}"
+  else
+    NVIM_ID="${pid}"
+  fi
+done < <(tmux list-panes -t "${SESSION}:" -F '#{pane_id}	#{pane_left}	#{pane_top}')
+
+# Recreate missing panes, launching their default commands
+if [ -z "${CLAUDE_ID}" ]; then
+  base="${NVIM_ID:-${ZSH_ID}}"
+  CLAUDE_ID=$(tmux split-window -h -t "${base}" -c "${START_DIR}" -P -F '#{pane_id}')
+  tmux send-keys -t "${CLAUDE_ID}" 'claude' C-m
+fi
+
+if [ -z "${NVIM_ID}" ] && [ -n "${ZSH_ID}" ]; then
+  NVIM_ID=$(tmux split-window -v -b -t "${ZSH_ID}" -c "${START_DIR}" -P -F '#{pane_id}')
+  tmux send-keys -t "${NVIM_ID}" 'nvim' C-m
+fi
+
+if [ -z "${ZSH_ID}" ] && [ -n "${NVIM_ID}" ]; then
+  ZSH_ID=$(tmux split-window -v -t "${NVIM_ID}" -c "${START_DIR}" -P -F '#{pane_id}')
+fi
+
+# Apply target sizes (claude=25% width, zsh=27% of window height)
+W=$(tmux display-message -t "${SESSION}:" -p '#{window_width}')
+H=$(tmux display-message -t "${SESSION}:" -p '#{window_height}')
+CLAUDE_W=$(( W * 25 / 100 ))
+ZSH_H=$(( H * 27 / 100 ))
+
+[ -n "${CLAUDE_ID}" ] && tmux resize-pane -t "${CLAUDE_ID}" -x "${CLAUDE_W}"
+[ -n "${ZSH_ID}" ]    && tmux resize-pane -t "${ZSH_ID}"    -y "${ZSH_H}"

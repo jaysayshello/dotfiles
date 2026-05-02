@@ -171,6 +171,9 @@ echo ""
 # Tmux Configuration
 echo "📟 Configuring tmux..."
 ln -sf "$SCRIPT_DIR/dotfiles/tmux/.tmux.conf" ~/
+mkdir -p ~/.local/bin
+ln -sf "$SCRIPT_DIR/dotfiles/tmux/tmux-code" ~/.local/bin/tmux-code
+ln -sf "$SCRIPT_DIR/dotfiles/tmux/tmux-code-reset" ~/.local/bin/tmux-code-reset
 echo "✅ Tmux configured successfully"
 echo ""
 

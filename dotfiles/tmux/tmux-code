@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SESSION="Code"
+START_DIR="${HOME}/Github"
+
+if ! tmux has-session -t="${SESSION}" 2>/dev/null; then
+  # Build session at the actual client size so pane percentages compute correctly
+  if [ -n "${TMUX:-}" ]; then
+    W=$(tmux display-message -p '#{client_width}')
+    H=$(tmux display-message -p '#{client_height}')
+  else
+    W=$(tput cols 2>/dev/null || echo 200)
+    H=$(tput lines 2>/dev/null || echo 50)
+  fi
+
+  tmux new-session -d -s "${SESSION}" -n "${SESSION}" -c "${START_DIR}" -x "${W}" -y "${H}"
+
+  # Right pane: claude
+  tmux split-window -h -t "${SESSION}:" -c "${START_DIR}"
+  tmux send-keys -t "${SESSION}:" 'claude' C-m
+
+  # Back to left pane, split off zsh at the bottom
+  tmux select-pane -t "${SESSION}:" -L
+  tmux split-window -v -t "${SESSION}:" -c "${START_DIR}"
+
+  # Top-left pane: nvim
+  tmux select-pane -t "${SESSION}:" -U
+  tmux send-keys -t "${SESSION}:" 'nvim' C-m
+
+  # Enforce exact pane dimensions (claude=25% W, zsh=27% H)
+  "$(dirname "$0")/tmux-code-reset"
+fi
+
+if [ -n "${TMUX:-}" ]; then
+  exec tmux switch-client -t "${SESSION}"
+else
+  exec tmux attach -t "${SESSION}"
+fi
