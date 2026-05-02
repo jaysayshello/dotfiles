@@ -94,6 +94,16 @@ Or run `desktop` / `laptop` from the terminal to switch modes on the fly.
 - **Create space**: `Cmd + Alt + N`
 - **Move to space**: `Shift + Cmd + X/Z/C`
 
+### Tmux Panes
+
+- **Prefix**: `Ctrl + Space`
+- **Navigate panes**: `Ctrl + a/s/w/d` (left/down/up/right)
+- **Move/swap panes**: `Ctrl + h/j/k/l` (left/down/up/right; forwarded to vim/nvim if focused)
+- **Split horizontal**: `Ctrl + e`
+- **Split vertical**: `Ctrl + q`
+- **Kill pane**: `Option + W`
+- **Switch session**: `Option + 1/2/3`
+
 ## Installed Applications
 
 - **Terminal**: Ghostty
