@@ -77,6 +77,7 @@ install_cask font-fira-code
 install_cask font-fira-code-nerd-font
 install_cask gpg-suite
 install_cask devutils
+install_cask jordanbaird-ice
 #install_cask google-chrome
 install_cask discord
 #install_cask spotify
