@@ -94,6 +94,7 @@ alias tf='terraform fmt -recursive && terragrunt hcl fmt'
 alias emptypush='git commit -m "retrigger checks" --allow-empty'
 alias fix='git add . && git commit -m "fix" && git push origin HEAD'
 alias rebase='git fetch --all && git rebase origin/main && git push --force-with-lease origin $(git branch --show-current)'
+alias pi='pi --recap-focus-min-seconds 5'
 
 function dotfiles() {
     local repo="$HOME/Github/jaysayshello/dotfiles"
