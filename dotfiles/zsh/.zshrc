@@ -432,3 +432,4 @@ case ":$PATH:" in
   *) export PATH="$PNPM_HOME:$PATH" ;;
 esac
 # pnpm end
+export PATH="/Users/jay.lansiquot/Github/wealthsimple/github-workflows/tfx-cli:$PATH"
