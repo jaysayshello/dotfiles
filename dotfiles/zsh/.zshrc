@@ -5,6 +5,13 @@
 export ZSH=$HOME/.oh-my-zsh
 ZSH_THEME=""
 plugins=(git zsh-autosuggestions zsh-syntax-highlighting)
+
+# Startup speed: skip the completion-dir security audit, and pin the compdump
+# to a stable host-independent path so it is reused instead of rebuilt whenever
+# the hostname or zsh version changes.
+ZSH_DISABLE_COMPFIX=true
+ZSH_COMPDUMP="$HOME/.zcompdump"
+
 source $ZSH/oh-my-zsh.sh
 
 eval "$(starship init zsh)"
@@ -14,6 +21,9 @@ bindkey '^F' autosuggest-accept
 # ============================================================================
 # Environment Variables
 # ============================================================================
+
+# Keep PATH entries unique so re-sourcing (`save`) never grows it.
+typeset -U path PATH
 
 # Go
 export GOPATH=$HOME/local/go
