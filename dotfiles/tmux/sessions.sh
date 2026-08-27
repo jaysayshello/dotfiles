@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Render all tmux sessions as styled pills, sorted by name (numeric-aware).
+# Render live tmux sessions as styled pills, sorted by name (numeric-aware).
+# Only existing sessions render, so closing a session removes its pill.
 # Output is consumed by status-left via #(...), so #[...] style markers work.
 
 tmux list-sessions -F '#{session_attached}|#{session_name}' 2>/dev/null \
