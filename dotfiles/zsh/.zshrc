@@ -1,18 +1,25 @@
 # ============================================================================
-# Oh My Zsh Configuration
+# Completions + Plugins  (dropped oh-my-zsh for faster startup)
 # ============================================================================
 
-export ZSH=$HOME/.oh-my-zsh
-ZSH_THEME=""
-plugins=(git zsh-autosuggestions zsh-syntax-highlighting)
-
-# Startup speed: skip the completion-dir security audit, and pin the compdump
-# to a stable host-independent path so it is reused instead of rebuilt whenever
-# the hostname or zsh version changes.
-ZSH_DISABLE_COMPFIX=true
+# Cached completion init: trust the dump if it was rebuilt today (-C skips the
+# slow per-file security audit); otherwise rebuild it. -i ignores insecure dirs.
 ZSH_COMPDUMP="$HOME/.zcompdump"
+autoload -Uz compinit
+if [[ $(date +%j) == $(stat -f %Sm -t %j "$ZSH_COMPDUMP" 2>/dev/null) ]]; then
+  compinit -C -i -d "$ZSH_COMPDUMP"
+else
+  compinit -i -d "$ZSH_COMPDUMP"
+fi
+# Case-insensitive matching + a selectable menu, which oh-my-zsh used to set up.
+zstyle ':completion:*' matcher-list 'm:{a-zA-Z}={A-Za-z}'
+zstyle ':completion:*' menu select
 
-source $ZSH/oh-my-zsh.sh
+# The only two oh-my-zsh plugins actually used, sourced directly.
+_zsh_plugins="$HOME/.oh-my-zsh/custom/plugins"
+source "$_zsh_plugins/zsh-autosuggestions/zsh-autosuggestions.zsh"
+source "$_zsh_plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh"
+unset _zsh_plugins
 
 eval "$(starship init zsh)"
 
@@ -35,8 +42,8 @@ export PATH=$PATH:$GOPATH/bin
 
 unsetopt PROMPT_SP
 
-# Load all saved ssh keys from macOS keychain
-/usr/bin/ssh-add --apple-load-keychain 2>/dev/null
+# Load all saved ssh keys from macOS keychain (backgrounded so it never blocks startup)
+(/usr/bin/ssh-add --apple-load-keychain &) 2>/dev/null
 
 # Use legacy fzf keybindings
 export FZF_LEGACY_KEYBINDINGS=1
@@ -343,7 +350,10 @@ export BUN_INSTALL="$HOME/.bun"
 export PATH="$BUN_INSTALL/bin:$PATH"
 [ -s "$BUN_INSTALL/_bun" ] && source "$BUN_INSTALL/_bun"
 
-eval "$(mise activate zsh)"
+# Shims mode keeps mise off the interactive hot path (no precmd/chpwd hook, no
+# cold binary load at shell start). Tools still resolve versions on invocation.
+# Revert to hooks with: eval "$(mise activate zsh)"
+eval "$(mise activate zsh --shims)"
 
 function close() {
   osascript <<'EOF'
