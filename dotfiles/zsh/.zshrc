@@ -96,6 +96,7 @@ export LOCAL_ENDPOINT=http://localhost:11434/v1
 alias openqwen='OPENAI_API_KEY=ollama OPENAI_BASE_URL=http://localhost:11434/v1 CLOUDFLARE_API_TOKEN= CLOUDFLARE_ACCOUNT_ID= opencode'
 alias start_model='launchctl load ~/Library/LaunchAgents/com.llamaserver.plist'
 alias stop_model='launchctl unload ~/Library/LaunchAgents/com.llamaserver.plist'
+alias warm_model='curl -s -X POST http://127.0.0.1:8080/v1/chat/completions -H "Content-Type: application/json" -d "{\"model\":\"qwen\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}],\"max_tokens\":1,\"stream\":false}" >/dev/null && echo "model warmed"'
 
 # Browser mode switching
 alias working="defaultbrowser chrome"
