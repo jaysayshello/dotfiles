@@ -454,3 +454,7 @@ case ":$PATH:" in
 esac
 # pnpm end
 export PATH="/Users/jay.lansiquot/Github/wealthsimple/github-workflows/tfx-cli:$PATH"
+export PATH="/Users/jay.lansiquot/Github/wealthsimple/github-workflows/tfx-cli:$PATH"
+export PATH="/Users/jay.lansiquot/Github/wealthsimple/github-workflows/tfx-cli:$PATH"
+export PATH="/Users/jay.lansiquot/Github/wealthsimple/github-workflows/tfx-cli:$PATH"
+export PATH="/Users/jay.lansiquot/Github/wealthsimple/github-workflows/tfx-cli:$PATH"
