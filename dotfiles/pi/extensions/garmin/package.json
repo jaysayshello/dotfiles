@@ -1,0 +1,16 @@
+{
+  "name": "garmin",
+  "version": "1.0.0",
+  "description": "Pi extension for Garmin Connect (garth-style unofficial login, read-only tools)",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "typebox": "^1.1.39"
+  }
+}
