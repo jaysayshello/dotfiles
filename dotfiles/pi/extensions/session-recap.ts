@@ -1,0 +1,718 @@
+/**
+ * Drafts a short Claude Code-style recap after the user has been away.
+ *
+ * Vendored from @tmustier/pi-session-recap 0.5.0 so local fixes survive a
+ * package reinstall. Changes against upstream:
+ *  - imports retargeted to the @wealthsimple pi build
+ *  - recap pinned above the editor instead of injected into the transcript
+ *  - agent_settled / ctx.isIdle() instead of agent_end / a hand-rolled flag,
+ *    so a recap is never drafted into an auto-compaction or a queued follow-up
+ *  - blocked attempts retry instead of silently consuming the one shot per blur
+ *  - the idle fallback re-arms when the focus signal goes stale, rather than
+ *    switching off permanently at the first focus event
+ *  - --recap-debug reports which gate stopped a recap
+ */
+
+import type { Message } from "@wealthsimple/pi-ai";
+import { complete, completeSimple } from "@wealthsimple/pi-ai/compat";
+import {
+	convertToLlm,
+	sessionEntryToContextMessages,
+	type ExtensionAPI,
+	type ExtensionContext,
+	type SessionEntry,
+} from "@wealthsimple/pi-coding-agent";
+
+type Model = Parameters<typeof completeSimple>[0];
+
+type RecapContext = {
+	messages: Message[];
+	broaderContext?: string;
+};
+
+type RecapReason = "idle" | "manual" | "resume" | "focus";
+
+type RecapOutcome =
+	| "shown"
+	| "gated:no-ui"
+	| "gated:activity"
+	| "gated:empty"
+	| "gated:dedupe"
+	| "gated:model"
+	| "gated:auth"
+	| "gated:unroutable"
+	| "gated:no-text"
+	| "gated:context-changed"
+	| "gated:aborted"
+	| "error";
+
+type RecapDraft =
+	| { ok: true; text: string }
+	| { ok: false; reason: "model" | "auth" | "unroutable" | "no-text" };
+
+const RECAP_KEY = "session-recap";
+const DEBUG_KEY = "session-recap-debug";
+
+const DEFAULT_AWAY_SECONDS = 10;
+const DEFAULT_IDLE_SECONDS = 120;
+const ANTHROPIC_RECAP_MODEL = "claude-haiku-4-5";
+// Blind-graded most faithful of the fast models on a real recap prompt, at the
+// cost of ~0.6s against haiku — latency the user never waits on, since the
+// draft happens while they are away. Falls back to ANTHROPIC_RECAP_MODEL.
+const DEFAULT_RECAP_MODEL = "litellm/deepseek-v4.1-flash";
+const GPT_MODEL_ID = /(?:^|\/)gpt-/;
+const LUNA_RECAP_MODEL = /(?:^|\/)gpt-5[.-]6-luna(?:$|[@:])/;
+
+// Debounce after a turn ends while blurred, so mid-loop turn_ends (which are
+// immediately followed by the next turn_start) don't trigger drafts.
+const POST_TURN_DEBOUNCE_MS = 3000;
+
+// A draft that lost a race with compaction or a queued message is worth
+// retrying; the session has simply moved on since the request went out.
+const RETRY_MS = 5000;
+const MAX_RETRY_ATTEMPTS = 3;
+const RETRYABLE: ReadonlySet<RecapOutcome> = new Set<RecapOutcome>([
+	"gated:context-changed",
+	"gated:auth",
+	"error",
+]);
+
+// Focus reporting can go quiet without a focus-out ever arriving. Past this,
+// stop trusting it and let the idle fallback arm again.
+const FOCUS_STALE_MS = 10 * 60 * 1000;
+
+// `completeSimple` cannot express "reasoning off": its `reasoning` option only
+// accepts real thinking levels. Omitting it disables thinking on every API we
+// use except openai-codex-responses, which sends no reasoning field at all and
+// so inherits the server-side default. Those models go through `complete` with
+// an explicit `reasoningEffort: "none"` instead.
+const NEEDS_EXPLICIT_REASONING_OFF = new Set(["openai-codex-responses"]);
+
+const RECENT_MESSAGE_WINDOW = 30;
+const MIN_ASSISTANT_WORDS = 30;
+const INITIAL_TASK_EDGE_CHARS = 4000;
+const TOOL_RESULT_EDGE_CHARS = 2000;
+
+// DECSET 1004 focus reporting — https://invisible-island.net/xterm/ctlseqs/ctlseqs.html
+const FOCUS_ENABLE = "\x1b[?1004h";
+const FOCUS_DISABLE = "\x1b[?1004l";
+const FOCUS_IN_SEQ = "\x1b[I";
+const FOCUS_OUT_SEQ = "\x1b[O";
+
+function extractText(content: Message["content"]): string {
+	if (typeof content === "string") return content;
+	return content
+		.filter((block) => block.type === "text")
+		.map((block) => block.text)
+		.join("\n");
+}
+
+export function buildRecapContext(
+	contextEntries: SessionEntry[],
+	branchEntries: SessionEntry[],
+): RecapContext {
+	let summary: string | undefined;
+	for (let i = contextEntries.length - 1; i >= 0; i--) {
+		const entry = contextEntries[i];
+		const candidate =
+			entry.type === "compaction" || entry.type === "branch_summary" ? entry.summary.trim() : undefined;
+		if (candidate) {
+			summary = candidate;
+			break;
+		}
+	}
+
+	let initialTask: string | undefined;
+	for (const entry of branchEntries) {
+		if (entry.type !== "message" || entry.message.role !== "user") continue;
+		initialTask = extractText(entry.message.content).trim() || undefined;
+		break;
+	}
+
+	const messages = convertToLlm(
+		contextEntries
+			.filter((entry) => entry.type !== "compaction" && entry.type !== "branch_summary")
+			.flatMap(sessionEntryToContextMessages),
+	).map((message) => {
+		// Replayed assistant messages keep the usage they were generated with, and
+		// pi sizes max_tokens off the newest usage it can find. In a long session
+		// that number describes the whole conversation rather than the short slice
+		// below, so the recap request gets clamped down to max_tokens: 1 and the
+		// model returns a single word. Zeroing it makes pi measure what is sent.
+		if (message.role === "assistant" && message.usage) {
+			return {
+				...message,
+				usage: { ...message.usage, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0 },
+			};
+		}
+		if (message.role !== "toolResult") return message;
+		return {
+			...message,
+			content: message.content.map((block) => {
+				if (block.type !== "text" || block.text.length <= TOOL_RESULT_EDGE_CHARS * 2) return block;
+				return {
+					...block,
+					text: `${block.text.slice(0, TOOL_RESULT_EDGE_CHARS)}\n… [tool result truncated for recap] …\n${block.text.slice(-TOOL_RESULT_EDGE_CHARS)}`,
+				};
+			}),
+		};
+	});
+	let start = Math.max(0, messages.length - RECENT_MESSAGE_WINDOW);
+	while (start > 0 && messages[start].role === "toolResult") start--;
+	let recentMessages = messages.slice(start);
+	if (recentMessages[0]?.role === "assistant") {
+		recentMessages = [
+			{
+				role: "user",
+				content: "(Earlier conversation omitted.)",
+				timestamp: recentMessages[0].timestamp,
+			},
+			...recentMessages,
+		];
+	}
+
+	const broader: string[] = [];
+	const initialTaskInRecent = recentMessages.some(
+		(message) => message.role === "user" && extractText(message.content).trim() === initialTask,
+	);
+	if (initialTask && !initialTaskInRecent) {
+		const framedInitialTask =
+			initialTask.length <= INITIAL_TASK_EDGE_CHARS * 2
+				? initialTask
+				: `${initialTask.slice(0, INITIAL_TASK_EDGE_CHARS)}\n… [middle of initial request omitted for recap] …\n${initialTask.slice(-INITIAL_TASK_EDGE_CHARS)}`;
+		broader.push(`Initial user request:\n${framedInitialTask}`);
+	}
+	if (summary) broader.push(`Session summary:\n${summary}`);
+
+	return {
+		messages: recentMessages,
+		broaderContext: broader.length > 0 ? broader.join("\n\n") : undefined,
+	};
+}
+
+function hasMeaningfulActivity(entries: SessionEntry[]): boolean {
+	let lastUserIdx = -1;
+	for (let i = entries.length - 1; i >= 0; i--) {
+		const e = entries[i];
+		if (e.type === "message" && e.message.role === "user") {
+			lastUserIdx = i;
+			break;
+		}
+	}
+	const tail = lastUserIdx >= 0 ? entries.slice(lastUserIdx + 1) : entries;
+	let assistantWords = 0;
+	let toolCalls = 0;
+	for (const e of tail) {
+		if (e.type !== "message" || e.message.role !== "assistant") continue;
+		const content = e.message.content;
+		assistantWords += extractText(content).split(/\s+/).filter(Boolean).length;
+		if (Array.isArray(content)) {
+			toolCalls += content.filter((block) => block.type === "toolCall").length;
+		}
+	}
+	return toolCalls > 0 || assistantWords >= MIN_ASSISTANT_WORDS;
+}
+
+export function selectRecapModel(
+	activeModel: Model | undefined,
+	overrideSpec: string | undefined,
+	registry: Pick<ExtensionContext["modelRegistry"], "find" | "getAvailable">,
+): Model | undefined {
+	// An override that no longer resolves (stale catalog entry, provider not
+	// configured) falls through to automatic selection rather than the active
+	// model, so a typo can't quietly draft every recap on the session's big model.
+	if (overrideSpec) {
+		const slash = overrideSpec.indexOf("/");
+		if (slash > 0) {
+			const found = registry.find(overrideSpec.slice(0, slash), overrideSpec.slice(slash + 1));
+			if (found) return found;
+		}
+	}
+	if (!activeModel) return undefined;
+
+	const available = registry
+		.getAvailable()
+		.filter((model) => model.provider === activeModel.provider);
+	if (activeModel.provider === "anthropic") {
+		return available.find((model) => model.id === ANTHROPIC_RECAP_MODEL) ?? activeModel;
+	}
+	if (!GPT_MODEL_ID.test(activeModel.id)) return activeModel;
+	return available.find((model) => LUNA_RECAP_MODEL.test(model.id)) ?? activeModel;
+}
+
+async function generateRecap(
+	recapContext: RecapContext,
+	ctx: ExtensionContext,
+	overrideSpec: string | undefined,
+	signal: AbortSignal | undefined,
+): Promise<RecapDraft> {
+	const model = selectRecapModel(ctx.model, overrideSpec, ctx.modelRegistry);
+	if (!model) return { ok: false, reason: "model" };
+
+	// Ambient-auth providers can succeed without returning an API key.
+	const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
+	if (!auth?.ok) return { ok: false, reason: "auth" };
+
+	const prompt =
+		(recapContext.broaderContext
+			? `Broader session context:\n${recapContext.broaderContext}\n\n`
+			: "") +
+		"The user stepped away and is coming back. Write exactly 1-3 short sentences. " +
+		"Start by stating the high-level task — what they are building or debugging, not " +
+		"implementation details. Next: the concrete next step. Skip status reports and commit recaps. " +
+		"Plain prose only: no lists, no headings, no code fences. Inline `code` and **bold** are fine.";
+
+	const context = {
+		systemPrompt: "",
+		messages: [
+			...recapContext.messages,
+			{
+				role: "user" as const,
+				content: [{ type: "text" as const, text: prompt }],
+				timestamp: Date.now(),
+			},
+		],
+	};
+	const options = {
+		apiKey: auth.apiKey,
+		headers: auth.headers,
+		env: auth.env,
+		signal,
+		cacheRetention: "none" as const,
+		maxTokens: 256,
+	};
+
+	// An auth-scoped base URL (internal gateway) belongs on the model; there is
+	// no request-level option for it.
+	const requestModel = auth.baseUrl ? { ...model, baseUrl: auth.baseUrl } : model;
+
+	let response;
+	try {
+		// Recaps never need reasoning; skipping it keeps each away-timer fire cheap.
+		response = NEEDS_EXPLICIT_REASONING_OFF.has(requestModel.api)
+			? await complete(requestModel, context, { ...options, reasoningEffort: "none" })
+			: await completeSimple(requestModel, context, options);
+	} catch (err) {
+		// completeSimple cannot route custom handlers registered only inside Pi.
+		if (err instanceof Error && err.message.startsWith("No API provider registered for api:")) {
+			return { ok: false, reason: "unroutable" };
+		}
+		throw err;
+	}
+
+	const text = response.content
+		.filter((c): c is { type: "text"; text: string } => c.type === "text")
+		.map((c) => c.text)
+		.join(" ")
+		.replace(/\s+/g, " ")
+		.trim();
+
+	return text ? { ok: true, text } : { ok: false, reason: "no-text" };
+}
+
+function clearRecap(ctx: ExtensionContext) {
+	if (!ctx.hasUI) return;
+	ctx.ui.setWidget(RECAP_KEY, undefined);
+	ctx.ui.setStatus(RECAP_KEY, undefined);
+	ctx.ui.setStatus(DEBUG_KEY, undefined);
+}
+
+type RecapTheme = ExtensionContext["ui"]["theme"];
+
+// The drafting model keeps reaching for **bold** labels and `code` spans, and a
+// widget line is raw text, so the markers render literally unless we style them.
+const INLINE_MARKDOWN =
+	/\*\*(\S(?:[^*]*\S)?)\*\*|__(\S(?:[^_]*\S)?)__|`([^`]+)`|(?<![\w*])\*(\S(?:[^*\n]*\S)?)\*(?!\w)/g;
+
+// Claude Code paints its prompt box and secondary text with ESC[37m, so the
+// terminal palette decides the brightness. The theme's `dim` token is a
+// hardcoded #505050, which reads far darker than CC beside the same border.
+const ccText = (text: string) => `\x1b[97m${text}\x1b[39m`;
+
+export function renderInlineMarkdown(text: string, theme: RecapTheme): string {
+	let out = "";
+	let last = 0;
+
+	for (const match of text.matchAll(INLINE_MARKDOWN)) {
+		const [raw, strongStar, strongUnderscore, code, emphasis] = match;
+		const index = match.index ?? 0;
+		if (index > last) out += ccText(text.slice(last, index));
+
+		const strong = strongStar ?? strongUnderscore;
+		if (strong !== undefined) out += theme.bold(theme.fg("text", strong));
+		else if (code !== undefined) out += theme.fg("mdCode", code);
+		else if (emphasis !== undefined) out += theme.italic(ccText(emphasis));
+
+		last = index + raw.length;
+	}
+
+	if (last < text.length) out += ccText(text.slice(last));
+	return out;
+}
+
+export function showRecap(ctx: ExtensionContext, recap: string) {
+	const theme = ctx.ui.theme;
+	const header = theme.fg("accent", theme.bold("✦ recap"));
+	const body = renderInlineMarkdown(recap, theme);
+	// Pin the recap directly above the editor so it always sits at the bottom of
+	// the session. Injecting it into the scrollable transcript let later output
+	// render beneath it, which pushed the recap up mid-session. The trailing blank
+	// row keeps the body off the top border of the prompt box. It holds a
+	// zero-width space, not "" or " ": blank and whitespace-only rows get
+	// trimmed before they reach the terminal, so they add no height.
+	ctx.ui.setWidget(RECAP_KEY, [header, body, "\u200b"], { placement: "aboveEditor" });
+}
+
+export default function (pi: ExtensionAPI) {
+	pi.registerFlag("recap-away-seconds", {
+		description: "Seconds of continuous terminal blur before an away recap is generated",
+		type: "string",
+		default: String(DEFAULT_AWAY_SECONDS),
+	});
+	pi.registerFlag("recap-idle-seconds", {
+		description:
+			"Idle-fallback: seconds after turn_end before a recap when the terminal doesn't report focus",
+		type: "string",
+		default: String(DEFAULT_IDLE_SECONDS),
+	});
+	pi.registerFlag("recap-disable-focus", {
+		description: "Disable DECSET ?1004 focus reporting (idle fallback still runs)",
+		type: "boolean",
+		default: false,
+	});
+	pi.registerFlag("recap-during-active", {
+		description: "Allow away recaps while an agent turn is still running",
+		type: "boolean",
+		default: false,
+	});
+	pi.registerFlag("recap-disable", {
+		description: "Disable the automatic session recap",
+		type: "boolean",
+		default: false,
+	});
+	pi.registerFlag("recap-model", {
+		description: "Override automatic model selection, e.g. anthropic/claude-sonnet-4-6",
+		type: "string",
+		default: DEFAULT_RECAP_MODEL,
+	});
+	pi.registerFlag("recap-debug", {
+		description: "Report in the status line which gate stopped a recap",
+		type: "boolean",
+		default: false,
+	});
+
+	let idleTimer: NodeJS.Timeout | undefined;
+	let awayTimer: NodeJS.Timeout | undefined;
+	let postTurnTimer: NodeJS.Timeout | undefined;
+	let retryTimer: NodeJS.Timeout | undefined;
+	let activeController: AbortController | undefined;
+	let focusListener: ((chunk: string | Buffer) => void) | undefined;
+	let focusEnabled = false;
+	let isBlurred = false;
+	let focusEventsSeen = false;
+	let lastFocusEventAt = 0;
+	let lastDraftedContext: string | undefined;
+
+	const flagMilliseconds = (name: string, fallback: number): number => {
+		const seconds = Number(pi.getFlag(name) ?? fallback);
+		return Math.max(5, Number.isFinite(seconds) ? seconds : fallback) * 1000;
+	};
+	const isDisabled = (): boolean => Boolean(pi.getFlag("recap-disable"));
+
+	// console.error is invisible here: pi owns the alternate screen and paints
+	// over it. Anything worth seeing has to go through the status line.
+	const debug = (ctx: ExtensionContext, message: string) => {
+		if (!pi.getFlag("recap-debug") || !ctx.hasUI) return;
+		ctx.ui.setStatus(DEBUG_KEY, ctx.ui.theme.fg("dim", `✦ recap: ${message}`));
+	};
+
+	const clearIdleTimer = () => {
+		if (idleTimer) {
+			clearTimeout(idleTimer);
+			idleTimer = undefined;
+		}
+	};
+	const clearAwayTimer = () => {
+		if (awayTimer) {
+			clearTimeout(awayTimer);
+			awayTimer = undefined;
+		}
+	};
+	const clearPostTurnTimer = () => {
+		if (postTurnTimer) {
+			clearTimeout(postTurnTimer);
+			postTurnTimer = undefined;
+		}
+	};
+	const clearRetryTimer = () => {
+		if (retryTimer) {
+			clearTimeout(retryTimer);
+			retryTimer = undefined;
+		}
+	};
+
+	const cancelActive = () => {
+		activeController?.abort();
+		activeController = undefined;
+	};
+
+	const focusSignalStale = (): boolean =>
+		!focusEventsSeen || Date.now() - lastFocusEventAt > FOCUS_STALE_MS;
+
+	const generateAndShow = async (
+		ctx: ExtensionContext,
+		reason: RecapReason,
+	): Promise<RecapOutcome> => {
+		if (!ctx.hasUI) return "gated:no-ui";
+
+		cancelActive();
+		const controller = new AbortController();
+		activeController = controller;
+
+		const showStatus = reason === "manual" || reason === "idle";
+		if (showStatus) ctx.ui.setStatus(RECAP_KEY, ctx.ui.theme.fg("dim", "✦ drafting recap…"));
+
+		try {
+			const entries = ctx.sessionManager.getBranch();
+			if (reason !== "manual" && !hasMeaningfulActivity(entries)) return "gated:activity";
+
+			const recapContext = buildRecapContext(ctx.sessionManager.buildContextEntries(), entries);
+			if (recapContext.messages.length === 0 && !recapContext.broaderContext) return "gated:empty";
+
+			const startContext = JSON.stringify(recapContext);
+			if (reason !== "manual" && lastDraftedContext === startContext) return "gated:dedupe";
+
+			const override = String(pi.getFlag("recap-model") ?? "").trim() || undefined;
+			const draft = await generateRecap(recapContext, ctx, override, controller.signal);
+			if (controller.signal.aborted) return "gated:aborted";
+			if (!draft.ok) return `gated:${draft.reason}` as RecapOutcome;
+
+			const currentContext = buildRecapContext(
+				ctx.sessionManager.buildContextEntries(),
+				ctx.sessionManager.getBranch(),
+			);
+			if (JSON.stringify(currentContext) !== startContext) return "gated:context-changed";
+
+			lastDraftedContext = startContext;
+			clearIdleTimer();
+			clearPostTurnTimer();
+			clearRetryTimer();
+
+			showRecap(ctx, draft.text);
+			return "shown";
+		} catch (err) {
+			if (controller.signal.aborted) return "gated:aborted";
+			debug(ctx, `failed: ${err instanceof Error ? err.message : String(err)}`);
+			return "error";
+		} finally {
+			if (activeController === controller) {
+				activeController = undefined;
+				if (showStatus) ctx.ui.setStatus(RECAP_KEY, undefined);
+			}
+		}
+	};
+
+	const scheduleRetry = (ctx: ExtensionContext, attempt: number) => {
+		clearRetryTimer();
+		retryTimer = setTimeout(() => {
+			retryTimer = undefined;
+			tryAwayRecap(ctx, attempt).catch(() => {});
+		}, RETRY_MS);
+	};
+
+	const tryAwayRecap = async (ctx: ExtensionContext, attempt = 0): Promise<void> => {
+		let blocked: boolean;
+		try {
+			if (isDisabled() || !ctx.hasUI || !isBlurred) return;
+			if (attempt > MAX_RETRY_ATTEMPTS) {
+				debug(ctx, "gave up after retries");
+				return;
+			}
+			// isIdle() stays false through auto-retry, auto-compaction and queued
+			// follow-ups, which is exactly when a draft would be discarded.
+			blocked = activeController !== undefined || (!ctx.isIdle() && !pi.getFlag("recap-during-active"));
+		} catch {
+			// getFlag throws once the extension instance is stale (reload, resume).
+			return;
+		}
+
+		if (blocked) {
+			scheduleRetry(ctx, attempt + 1);
+			return;
+		}
+
+		const outcome = await generateAndShow(ctx, "focus");
+		if (outcome !== "shown") debug(ctx, outcome);
+		if (RETRYABLE.has(outcome)) scheduleRetry(ctx, attempt + 1);
+	};
+
+	const handleFocusOut = (ctx: ExtensionContext) => {
+		focusEventsSeen = true;
+		lastFocusEventAt = Date.now();
+		isBlurred = true;
+		clearIdleTimer();
+		if (isDisabled()) return;
+		clearAwayTimer();
+		awayTimer = setTimeout(() => {
+			awayTimer = undefined;
+			tryAwayRecap(ctx).catch(() => {});
+		}, flagMilliseconds("recap-away-seconds", DEFAULT_AWAY_SECONDS));
+	};
+
+	const handleFocusIn = () => {
+		focusEventsSeen = true;
+		lastFocusEventAt = Date.now();
+		isBlurred = false;
+		clearAwayTimer();
+		clearPostTurnTimer();
+		clearIdleTimer();
+		clearRetryTimer();
+		// Leave an in-flight recap to land as the user returns.
+	};
+
+	const attachFocusReporting = (ctx: ExtensionContext) => {
+		if (focusEnabled || pi.getFlag("recap-disable-focus") || !ctx.hasUI) return;
+		if (!process.stdout.isTTY || !process.stdin.isTTY) return;
+
+		try {
+			process.stdout.write(FOCUS_ENABLE);
+		} catch {
+			return;
+		}
+
+		// Focus sequences may straddle input chunks, so retain the unmatched tail.
+		// pi-tui puts stdin in utf8, so chunks arrive as strings, not Buffers.
+		const MAX_SEQ = Math.max(FOCUS_IN_SEQ.length, FOCUS_OUT_SEQ.length);
+		let buf = "";
+		const listener = (chunk: string | Buffer) => {
+			buf += typeof chunk === "string" ? chunk : chunk.toString("binary");
+			let i = 0;
+			while (i + MAX_SEQ <= buf.length) {
+				if (buf.startsWith(FOCUS_IN_SEQ, i)) {
+					handleFocusIn();
+					i += FOCUS_IN_SEQ.length;
+				} else if (buf.startsWith(FOCUS_OUT_SEQ, i)) {
+					handleFocusOut(ctx);
+					i += FOCUS_OUT_SEQ.length;
+				} else {
+					i++;
+				}
+			}
+			buf = buf.slice(i);
+		};
+		process.stdin.on("data", listener);
+		focusListener = listener;
+		focusEnabled = true;
+	};
+
+	const detachFocusReporting = () => {
+		if (focusListener) {
+			process.stdin.off("data", focusListener);
+			focusListener = undefined;
+		}
+		if (focusEnabled) {
+			try {
+				process.stdout.write(FOCUS_DISABLE);
+			} catch {}
+			focusEnabled = false;
+		}
+		isBlurred = false;
+	};
+
+	pi.on("turn_end", (_event, ctx) => {
+		if (isDisabled() || !ctx.hasUI) return;
+
+		// Debounce mid-loop turn_end → turn_start pairs.
+		if (isBlurred) {
+			clearPostTurnTimer();
+			postTurnTimer = setTimeout(() => {
+				postTurnTimer = undefined;
+				tryAwayRecap(ctx).catch(() => {});
+			}, POST_TURN_DEBOUNCE_MS);
+		}
+
+		// Only a fallback: arm it while focus reporting is absent or has gone
+		// quiet long enough that a missed focus-out is the likelier explanation.
+		if (focusSignalStale()) {
+			clearIdleTimer();
+			idleTimer = setTimeout(() => {
+				idleTimer = undefined;
+				if (!focusSignalStale()) return;
+				generateAndShow(ctx, "idle")
+					.then((outcome) => {
+						if (outcome !== "shown") debug(ctx, outcome);
+					})
+					.catch(() => {});
+			}, flagMilliseconds("recap-idle-seconds", DEFAULT_IDLE_SECONDS));
+		}
+	});
+
+	pi.on("turn_start", () => {
+		clearIdleTimer();
+		clearPostTurnTimer();
+		clearRetryTimer();
+		clearAwayTimer();
+		cancelActive();
+	});
+
+	pi.on("input", (_event, ctx) => {
+		clearIdleTimer();
+		clearPostTurnTimer();
+		clearRetryTimer();
+		clearAwayTimer();
+		cancelActive();
+		clearRecap(ctx);
+	});
+
+	pi.on("agent_start", (_event, ctx) => {
+		clearIdleTimer();
+		clearPostTurnTimer();
+		clearRetryTimer();
+		cancelActive();
+		clearRecap(ctx);
+	});
+
+	// agent_end still precedes auto-retry, auto-compaction and queued messages;
+	// drafting there races the very context change that discards the result.
+	pi.on("agent_settled", async (_event, ctx) => {
+		if (isBlurred) await tryAwayRecap(ctx);
+	});
+
+	pi.on("session_compact", (_event, ctx) => {
+		// The pinned recap and the dedupe key both describe a context that no
+		// longer exists.
+		lastDraftedContext = undefined;
+		clearRecap(ctx);
+	});
+
+	pi.on("session_shutdown", () => {
+		clearIdleTimer();
+		clearAwayTimer();
+		clearPostTurnTimer();
+		clearRetryTimer();
+		cancelActive();
+		detachFocusReporting();
+	});
+
+	pi.on("session_start", (event, ctx) => {
+		attachFocusReporting(ctx);
+		if (isDisabled() || !ctx.hasUI) return;
+		if (event.reason === "resume" || event.reason === "fork") {
+			setTimeout(() => {
+				generateAndShow(ctx, "resume")
+					.then((outcome) => {
+						if (outcome !== "shown") debug(ctx, outcome);
+					})
+					.catch(() => {});
+			}, 300);
+		}
+	});
+
+	pi.registerCommand("recap", {
+		description: "Generate a recap of recent session activity",
+		handler: async (_args, ctx) => {
+			const outcome = await generateAndShow(ctx, "manual");
+			if (outcome !== "shown") debug(ctx, outcome);
+		},
+	});
+}

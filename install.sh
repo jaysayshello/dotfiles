@@ -142,6 +142,32 @@ ln -sf "$SCRIPT_DIR/dotfiles/llama-swap/config.yaml" ~/.config/llama-swap/config
 echo "✅ llama-swap config linked (binary install handled by local-llm-stack.sh)"
 echo ""
 
+# Pi Configuration
+echo "🥧 Configuring Pi..."
+mkdir -p ~/.pi/agent/themes ~/.pi/agent/extensions ~/.pi/agent/scripts
+if [ ! -f "$SCRIPT_DIR/dotfiles/pi/settings.json" ]; then
+  cp "$SCRIPT_DIR/dotfiles/pi/settings.json.example" "$SCRIPT_DIR/dotfiles/pi/settings.json"
+  echo "  ℹ️  Seeded dotfiles/pi/settings.json from example. Add your mcplocker services (file is gitignored)"
+fi
+ln -sf "$SCRIPT_DIR/dotfiles/pi/settings.json" ~/.pi/agent/settings.json
+for theme in "$SCRIPT_DIR"/dotfiles/pi/themes/*.json; do
+  ln -sf "$theme" ~/.pi/agent/themes/
+done
+for ext in "$SCRIPT_DIR"/dotfiles/pi/extensions/*; do
+  ln -sfn "$ext" ~/.pi/agent/extensions/
+done
+ln -sfn "$SCRIPT_DIR/dotfiles/pi/scripts/cc-patches" ~/.pi/agent/scripts/cc-patches
+# The MCP extensions ship source only; their deps are not tracked.
+for ext in strava-mcp garmin; do
+  if [ ! -d "$SCRIPT_DIR/dotfiles/pi/extensions/$ext/node_modules" ]; then
+    echo "  📦 installing $ext deps"
+    (cd "$SCRIPT_DIR/dotfiles/pi/extensions/$ext" && npm install --silent)
+  fi
+done
+echo "  ℹ️  Credentials are not tracked: run /strava-auth, /garmin-auth, and pi auth as needed"
+echo "✅ Pi configured successfully"
+echo ""
+
 # Oh My Zsh
 echo "🐚 Installing Oh My Zsh..."
 install_formula zsh

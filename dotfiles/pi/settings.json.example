@@ -1,0 +1,30 @@
+{
+  "packages": [
+    "npm:@samfp/pi-memory",
+    {
+      "source": "https://github.com/juanibiapina/pi-powerbar",
+      "extensions": []
+    },
+    "npm:@pi-unipi/notify",
+    "npm:better-claude-code-ui",
+    "npm:pi-subagents"
+  ],
+  "extensions": [
+    "extensions/datadog",
+    "extensions/notion",
+    "extensions/strava-mcp",
+    "extensions/garmin"
+  ],
+  "defaultProvider": "anthropic",
+  "defaultModel": "claude-opus-5",
+  "skills": [
+    "~/.claude/skills",
+    "~/.claude/plugins/marketplaces/claude-community/eli5/skills"
+  ],
+  "defaultThinkingLevel": "high",
+  "theme": "claude-code-dark-cc",
+  "warnings": {
+    "anthropicExtraUsage": false
+  },
+  "tuiMode": "fullscreen"
+}

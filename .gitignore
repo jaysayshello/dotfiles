@@ -13,3 +13,16 @@ scripts/sync-dotfiles.log
 
 # Per-machine endpoints (LAN IPs, public IPs)
 dotfiles/llama-swap/config.yaml
+
+# Pi credentials live beside its config in ~/.pi/agent; never track them.
+# sync-dotfiles.sh runs `git add .`, so these stay explicit.
+dotfiles/pi/**/auth.json
+dotfiles/pi/**/*-auth.json
+dotfiles/pi/**/trust.json
+dotfiles/pi/**/wally-identity.json
+dotfiles/pi/**/node_modules/
+dotfiles/pi/sessions/
+dotfiles/pi/cache/
+
+# Real Pi settings list employer MCP services; only the example is tracked.
+dotfiles/pi/settings.json

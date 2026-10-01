@@ -1,0 +1,17 @@
+{
+  "name": "strava-mcp",
+  "version": "1.0.0",
+  "description": "Pi extension bridging Strava's remote MCP server (OAuth + Streamable HTTP)",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "typebox": "^1.1.39"
+  }
+}

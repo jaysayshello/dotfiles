@@ -1,0 +1,79 @@
+/**
+ * Custom Footer Extension - replicates the default Pi footer style.
+ *
+ * Layout: ↑56 ↓28k $2.54 | ██████████░░░░░░░░░░ 13%          provider | model · thinking
+ */
+
+import type { AssistantMessage } from "@wealthsimple/pi-ai";
+import type { ExtensionAPI } from "@wealthsimple/pi-coding-agent";
+import { truncateToWidth, visibleWidth } from "@wealthsimple/pi-tui";
+
+export default function (pi: ExtensionAPI) {
+	let enabled = true;
+
+	function applyFooter(ctx: any) {
+		ctx.ui.setFooter((tui: any, theme: any, footerData: any) => {
+			const unsub = footerData.onBranchChange(() => tui.requestRender());
+
+			return {
+				dispose: unsub,
+				invalidate() {},
+				render(width: number): string[] {
+					let input = 0,
+						output = 0,
+						cost = 0;
+					for (const e of ctx.sessionManager.getBranch()) {
+						if (e.type === "message" && e.message.role === "assistant") {
+							const m = e.message as AssistantMessage;
+							input += m.usage.input;
+							output += m.usage.output;
+							cost += m.usage.cost.total;
+						}
+					}
+
+					// Context usage bar
+					const contextWindow = ctx.model?.contextWindow ?? 1_000_000;
+					const totalTokens = input + output;
+					const pct = Math.min(1, totalTokens / contextWindow);
+					const barLen = 10;
+					const filled = Math.round(pct * barLen);
+					const bar = "\u2588".repeat(filled) + "\u2591".repeat(barLen - filled);
+					const pctStr = `${Math.round(pct * 100)}%`;
+
+					// Format helpers
+					const fmt = (n: number) => (n < 1000 ? `${n}` : `${(n / 1000).toFixed(0)}k`);
+
+					// Left section: tokens, cost, context bar
+					const left = theme.fg("dim", `\u2191${fmt(input)} \u2193${fmt(output)} $${cost.toFixed(2)} \u2502 ${bar} ${pctStr}`);
+
+					// Right section: provider | model · thinking
+					const provider = ctx.model?.provider || "no-provider";
+					const modelId = ctx.model?.id || "no-model";
+					const thinkingLevel = pi.getThinkingLevel?.() ?? "off";
+					const right = theme.fg("dim", `${provider} \u2502 ${modelId} \u00b7 ${thinkingLevel}`);
+
+					const pad = " ".repeat(Math.max(1, width - visibleWidth(left) - visibleWidth(right)));
+					return [truncateToWidth(left + pad + right, width)];
+				},
+			};
+		});
+	}
+
+	pi.on("session_start", async (_event, ctx) => {
+		if (enabled) applyFooter(ctx);
+	});
+
+	pi.registerCommand("footer", {
+		description: "Toggle custom footer",
+		handler: async (_args, ctx) => {
+			enabled = !enabled;
+			if (enabled) {
+				applyFooter(ctx);
+				ctx.ui.notify("Custom footer enabled", "info");
+			} else {
+				ctx.ui.setFooter(undefined);
+				ctx.ui.notify("Default footer restored", "info");
+			}
+		},
+	});
+}
