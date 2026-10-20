@@ -478,3 +478,6 @@ export PATH="/Users/jay.lansiquot/Github/wealthsimple/github-workflows/tfx-cli:$
 export PATH="/Users/jay.lansiquot/Github/wealthsimple/github-workflows/tfx-cli:$PATH"
 export PATH="/Users/jay.lansiquot/Github/wealthsimple/github-workflows/tfx-cli:$PATH"
 export PATH="/Users/jay.lansiquot/Github/wealthsimple/github-workflows/tfx-cli:$PATH"
+
+# Instagram/LinkedIn blocker: `block` / `unblock`
+[ -f ~/.socialblock.sh ] && source ~/.socialblock.sh
