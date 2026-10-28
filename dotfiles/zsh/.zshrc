@@ -94,8 +94,9 @@ alias claude='claude --permission-mode bypassPermissions'
 export CLAUDE_CODE_NO_FLICKER=1
 export LOCAL_ENDPOINT=http://localhost:11434/v1
 alias openqwen='OPENAI_API_KEY=ollama OPENAI_BASE_URL=http://localhost:11434/v1 CLOUDFLARE_API_TOKEN= CLOUDFLARE_ACCOUNT_ID= opencode'
-alias start_model='launchctl load ~/Library/LaunchAgents/com.llamaserver.plist'
-alias stop_model='launchctl unload ~/Library/LaunchAgents/com.llamaserver.plist'
+# start_model re-enables the agent, so run stop_model before reboot or it starts at login again.
+alias start_model='launchctl enable gui/$UID/com.llamaserver && launchctl bootstrap gui/$UID ~/Library/LaunchAgents/com.llamaserver.plist'
+alias stop_model='launchctl bootout gui/$UID/com.llamaserver; launchctl disable gui/$UID/com.llamaserver'
 alias warm_model='~/.local/bin/warm-llama.sh && echo "model warmed"'
 
 # Browser mode switching
