@@ -7,3 +7,4 @@ cp ~/.desktop_yabai ~/.yabairc
 cp ~/.desktop_skhdrc ~/.skhdrc
 launchctl kickstart -k "gui/$(id -u)/com.koekeishiya.yabai"
 launchctl kickstart -k "gui/$(id -u)/com.koekeishiya.skhd"
+bash "$(dirname "$0")/widgets.sh" desktop
