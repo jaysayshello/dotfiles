@@ -177,6 +177,20 @@ function nvcd() {
   pwd > ~/.nvim-cwd
 }
 
+# Herdr: after a reboot or core crash, hc gives each lost terminal a fresh shell.
+# Reopen the omp session that terminal had (breadcrumb written by
+# ~/.omp/agent/extensions/herdr-resume.ts). Runs once, at the first prompt.
+function _herdr_omp_resume() {
+  precmd_functions=(${precmd_functions:#_herdr_omp_resume})
+  local crumb=~/.local/state/omp-herdr-resume/$HC_TERMINAL_ID created session
+  [[ -r $crumb ]] || return
+  { read -r created; read -r session } < $crumb
+  rm -f $crumb
+  [[ $(hc get $HC_TERMINAL_ID --json 2>/dev/null | jq -r .created_ms) == $created ]] || return
+  if [[ -f $session ]]; then omp --resume $session; else omp; fi
+}
+[[ -n $HC_TERMINAL_ID && -z $OMPCODE && -o interactive ]] && precmd_functions+=(_herdr_omp_resume)
+
 # Attach to existing tmux session or create new
 function tmux() {
   if command tmux has-session 2>/dev/null; then
