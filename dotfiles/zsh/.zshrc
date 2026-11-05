@@ -177,17 +177,28 @@ function nvcd() {
   pwd > ~/.nvim-cwd
 }
 
-# Herdr: after a reboot or core crash, hc gives each lost terminal a fresh shell.
-# Reopen the omp session that terminal had (breadcrumb written by
-# ~/.omp/agent/extensions/herdr-resume.ts). Runs once, at the first prompt.
+# Herdr: each terminal keeps its own omp session (breadcrumb written by
+# ~/.omp/agent/extensions/herdr-resume.ts). Sets reply=(session state) when this
+# terminal has one; created_ms must match, so a reused address never does.
+function _herdr_omp_crumb() {
+  local crumb=~/.local/state/omp-herdr-resume/$HC_TERMINAL_ID created session state
+  [[ -n $HC_TERMINAL_ID && -r $crumb ]] || return 1
+  { read -r created; read -r session; read -r state } < $crumb
+  [[ -f $session && $(hc get $HC_TERMINAL_ID --json 2>/dev/null | jq -r .created_ms) == $created ]] || return 1
+  reply=($session $state)
+}
+
+# Bare `omp` resumes this terminal's session; a new terminal starts a new one.
+function omp() {
+  if (( $# == 0 )) && _herdr_omp_crumb; then command omp --resume $reply[1]
+  else command omp "$@"; fi
+}
+
+# After a reboot or core crash, hc gives each lost terminal a fresh shell. Reopen
+# omp if it was running (no `quit` mark). Runs once, at the first prompt.
 function _herdr_omp_resume() {
   precmd_functions=(${precmd_functions:#_herdr_omp_resume})
-  local crumb=~/.local/state/omp-herdr-resume/$HC_TERMINAL_ID created session
-  [[ -r $crumb ]] || return
-  { read -r created; read -r session } < $crumb
-  rm -f $crumb
-  [[ $(hc get $HC_TERMINAL_ID --json 2>/dev/null | jq -r .created_ms) == $created ]] || return
-  if [[ -f $session ]]; then omp --resume $session; else omp; fi
+  _herdr_omp_crumb && [[ $reply[2] != quit ]] && command omp --resume $reply[1]
 }
 [[ -n $HC_TERMINAL_ID && -z $OMPCODE && -o interactive ]] && precmd_functions+=(_herdr_omp_resume)
 
