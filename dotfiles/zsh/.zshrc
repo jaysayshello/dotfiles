@@ -82,6 +82,31 @@ function dump() {
   echo "Dumped Desktop to $month_folder"
 }
 
+# project wafflehouse update alerts -> ~/Projects/2026-11-06-wafflehouse-alerts
+# Name rules: date first, kebab-case, words in full, 30 chars max (19 after the date).
+function project() {
+  (( $# )) || { echo "Usage: project <description>" >&2; return 1; }
+  local date=$(date +%F) slug="" attempt
+  local prompt="Turn this project description into a kebab-case directory name: \"$*\".
+Rules: lowercase a-z, 0-9 and hyphens only. Spell words out, no abbreviations. 19 characters max.
+Pick fewer, sharper words instead of abbreviating. Reply with only the name, nothing else."
+  for attempt in 1 2 3; do
+    slug=$(command claude -p --model opus --tools "" --no-session-persistence "$prompt" 2>/dev/null \
+      | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
+    [[ $slug =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]] && (( ${#slug} <= 19 )) && break
+    slug=""
+  done
+  [[ -n $slug ]] || { echo "project: opus did not return a valid name" >&2; return 1; }
+  local dir="$HOME/Projects/$date-$slug"
+  if [[ ! -d $dir ]]; then
+    mkdir -p "$dir" || return 1
+    printf '# %s\n\n%s\n\n## Plan\n\n' "$slug" "$*" > "$dir/README.md"
+    printf '# TODO\n\n' > "$dir/TODO.md"
+    printf '# PRs\n\n| PR | Title | Status |\n| --- | --- | --- |\n' > "$dir/MERGED-PRS.md"
+  fi
+  cd "$dir" && echo "$dir"
+}
+
 alias cheat='zed $HOME/Github/jaysayshello/dotfiles/dotfiles/cheatsheets'
 alias ip='curl icanhazip.com'
 alias knownhosts='cd ~/.ssh'
