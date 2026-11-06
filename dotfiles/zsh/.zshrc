@@ -82,30 +82,42 @@ function dump() {
   echo "Dumped Desktop to $month_folder"
 }
 
-# project wafflehouse update alerts -> ~/Projects/2026-11-06-wafflehouse-alerts
-# Name rules: date first, kebab-case, words in full, 30 chars max (19 after the date).
+# project wafflehouse update alerts -> ~/Projects/wafflehouse-alerts-2026-11-06
+# Name rules: kebab-case, words in full, date last, 30 chars max (19 before the date).
 function project() {
   (( $# )) || { echo "Usage: project <description>" >&2; return 1; }
-  local date=$(date +%F) slug="" attempt
+  local date=$(date +%F) reply="" slug="" attempt
   local prompt="Turn this project description into a kebab-case directory name: \"$*\".
 Rules: lowercase a-z, 0-9 and hyphens only. Spell words out, no abbreviations. 19 characters max.
 Pick fewer, sharper words instead of abbreviating. Reply with only the name, nothing else."
+  # Skipping settings, hooks, MCP and the default system prompt halves the call (about 3s instead of 6s).
   for attempt in 1 2 3; do
-    slug=$(command claude -p --model opus --tools "" --no-session-persistence "$prompt" 2>/dev/null \
-      | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
+    reply=$(CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 command claude -p --model opus --tools "" \
+      --no-session-persistence --setting-sources "" --strict-mcp-config --disable-slash-commands \
+      --system-prompt "You name project directories. Reply with only the name." "$prompt" 2>/dev/null)
+    slug=${${reply//[[:space:]]/}:l}
     [[ $slug =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]] && (( ${#slug} <= 19 )) && break
     slug=""
   done
-  [[ -n $slug ]] || { echo "project: opus did not return a valid name" >&2; return 1; }
-  local dir="$HOME/Projects/$date-$slug"
+  [[ -n $slug ]] || { echo "project: no valid name from opus, last reply: $reply" >&2; return 1; }
+  local dir="$HOME/Projects/$slug-$date"
   if [[ ! -d $dir ]]; then
     mkdir -p "$dir" || return 1
     printf '# %s\n\n%s\n\n## Plan\n\n' "$slug" "$*" > "$dir/README.md"
     printf '# TODO\n\n' > "$dir/TODO.md"
     printf '# PRs\n\n| PR | Title | Status |\n| --- | --- | --- |\n' > "$dir/MERGED-PRS.md"
   fi
-  cd "$dir" && echo "$dir"
+  cd "$dir" && echo "$dir" || return 1
+  # Rename the Herdr space that holds this terminal, not the space the window shows.
+  if [[ -n $HC_TERMINAL_ID ]] && (( $+commands[herdr-app] )); then
+    local space=$(herdr-app ls 2>/dev/null | jq -r --arg t "$HC_TERMINAL_ID" \
+      'first(.spaces[] | select(any(.tabs[].terminals[]; .terminal == $t)) | .id) // empty')
+    [[ -n $space ]] && herdr-app do space.rename --id "$space" --name "${dir:t}" >/dev/null 2>&1 \
+      || echo "project: could not rename the Herdr space" >&2
+  fi
 }
+# noglob: a "?" or "*" in the description would otherwise fail with "no matches found".
+alias project='noglob project'
 
 alias cheat='zed $HOME/Github/jaysayshello/dotfiles/dotfiles/cheatsheets'
 alias ip='curl icanhazip.com'
