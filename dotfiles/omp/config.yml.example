@@ -1,0 +1,52 @@
+symbolPreset: nerd
+composer:
+  shape: claude
+  tokenRate: true
+theme:
+  dark: titanium-bright
+setupVersion: 3
+modelRoles:
+  default: anthropic/claude-opus-5-5:high
+defaultThinkingLevel: high
+providers:
+  anthropic:
+    slowMode: "off"
+memory:
+  backend: hindsight
+mcp:
+  startupTimeoutMs: 0
+statusLine:
+  preset: custom
+  leftSegments:
+    - pi
+    - vim
+    - model
+    - mode
+    - collab
+    - stream
+    - path
+    - git
+    - pr
+    - context_pct
+    - cost
+    - status
+  rightSegments:
+    - session_name
+  segmentOptions:
+    model:
+      showThinkingLevel: true
+    path:
+      abbreviate: true
+      maxLength: 40
+      stripWorkPrefix: true
+    git:
+      showBranch: true
+      showStaged: true
+      showUnstaged: true
+      showUntracked: true
+  showHookStatus: false
+autoResume: false
+update:
+  auto: false
+dev:
+  autoqaConsent: denied

@@ -168,6 +168,31 @@ echo "  ℹ️  Credentials are not tracked: run /strava-auth, /garmin-auth, and
 echo "✅ Pi configured successfully"
 echo ""
 
+# omp Configuration
+echo "🤖 Configuring omp..."
+mkdir -p ~/.omp/agent/themes ~/.omp/agent/extensions ~/Library/LaunchAgents
+# The real config.yml is gitignored (it can name work skills). Seed it from the live file, else the example.
+if [ ! -f "$SCRIPT_DIR/dotfiles/omp/config.yml" ]; then
+  if [ -f ~/.omp/agent/config.yml ] && [ ! -L ~/.omp/agent/config.yml ]; then
+    cp ~/.omp/agent/config.yml "$SCRIPT_DIR/dotfiles/omp/config.yml"
+  else
+    cp "$SCRIPT_DIR/dotfiles/omp/config.yml.example" "$SCRIPT_DIR/dotfiles/omp/config.yml"
+  fi
+fi
+ln -sf "$SCRIPT_DIR/dotfiles/omp/config.yml" ~/.omp/agent/config.yml
+for theme in "$SCRIPT_DIR"/dotfiles/omp/themes/*.json; do
+  ln -sf "$theme" ~/.omp/agent/themes/
+done
+for ext in "$SCRIPT_DIR"/dotfiles/omp/extensions/*; do
+  ln -sf "$ext" ~/.omp/agent/extensions/
+done
+# A copy, not a link: the hourly `omp update` job keeps working if the repo moves.
+cp "$SCRIPT_DIR/dotfiles/omp/launchagents/com.jay.omp-update.plist" ~/Library/LaunchAgents/
+launchctl bootstrap "gui/$(id -u)" ~/Library/LaunchAgents/com.jay.omp-update.plist 2>/dev/null || true
+echo "  ℹ️  Not tracked: auth, mcp.json (MCP servers and their headers), sessions, memory, skills"
+echo "✅ omp configured successfully"
+echo ""
+
 # Oh My Zsh
 echo "🐚 Installing Oh My Zsh..."
 install_formula zsh
