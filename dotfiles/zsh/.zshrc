@@ -114,6 +114,10 @@ Pick fewer, sharper words instead of abbreviating. Reply with only the name, not
       'first(.spaces[] | select(any(.tabs[].terminals[]; .terminal == $t)) | .id) // empty')
     [[ -n $space ]] && herdr-app do space.rename --id "$space" --name "${dir:t}" >/dev/null 2>&1 \
       || echo "project: could not rename the Herdr space" >&2
+  # Rex: rename the session that holds this terminal.
+  elif [[ -n $REX_SESSION ]] && (( $+commands[rex] )); then
+    rex session rename "$REX_SESSION" "${dir:t}" >/dev/null 2>&1 \
+      || echo "project: could not rename the Rex session" >&2
   fi
 }
 # noglob: a "?" or "*" in the description would otherwise fail with "no matches found".
@@ -225,19 +229,31 @@ function _herdr_omp_crumb() {
   reply=($session $state)
 }
 
+# Rex: the same for each Rex terminal (breadcrumb written by
+# ~/.omp/agent/extensions/rex-resume.ts). Rex never reuses a block id, so the
+# breadcrumb holds only the session file and the `quit` mark.
+function _rex_omp_crumb() {
+  local crumb=~/.local/state/omp-rex-resume/${REX_BLOCK#block:} session state
+  [[ -n $REX_BLOCK && -z $HC_TERMINAL_ID && -r $crumb ]] || return 1
+  { read -r session; read -r state } < $crumb
+  [[ -f $session ]] || return 1
+  reply=($session $state)
+}
+
 # Bare `omp` resumes this terminal's session; a new terminal starts a new one.
 function omp() {
-  if (( $# == 0 )) && _herdr_omp_crumb; then command omp --resume $reply[1]
+  if (( $# == 0 )) && { _herdr_omp_crumb || _rex_omp_crumb }; then command omp --resume $reply[1]
   else command omp "$@"; fi
 }
 
-# After a reboot or core crash, hc gives each lost terminal a fresh shell. Reopen
-# omp if it was running (no `quit` mark). Runs once, at the first prompt.
+# After a reboot or core crash, hc gives each lost terminal a fresh shell, and a
+# restored Rex session gives each terminal a fresh shell. Reopen omp if it was
+# running (no `quit` mark). Runs once, at the first prompt.
 function _herdr_omp_resume() {
   precmd_functions=(${precmd_functions:#_herdr_omp_resume})
-  _herdr_omp_crumb && [[ $reply[2] != quit ]] && command omp --resume $reply[1]
+  { _herdr_omp_crumb || _rex_omp_crumb } && [[ $reply[2] != quit ]] && command omp --resume $reply[1]
 }
-[[ -n $HC_TERMINAL_ID && -z $OMPCODE && -o interactive ]] && precmd_functions+=(_herdr_omp_resume)
+[[ ( -n $HC_TERMINAL_ID || -n $REX_BLOCK ) && -z $OMPCODE && -o interactive ]] && precmd_functions+=(_herdr_omp_resume)
 
 # Attach to existing tmux session or create new
 function tmux() {
