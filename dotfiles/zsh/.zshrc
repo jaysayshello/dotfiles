@@ -229,6 +229,16 @@ function _herdr_omp_crumb() {
   reply=($session $state)
 }
 
+# Claude: the same for each Claude terminal (breadcrumb written by the Herdr
+# Claude hook). Sets reply=(session-id state).
+function _herdr_claude_crumb() {
+  local crumb=~/.local/state/claude-herdr-resume/$HC_TERMINAL_ID created session state
+  [[ -n $HC_TERMINAL_ID && -r $crumb ]] || return 1
+  { read -r created; read -r session; read -r state } < $crumb
+  [[ -f $session && $(hc get $HC_TERMINAL_ID --json 2>/dev/null | jq -r .created_ms) == $created ]] || return 1
+  reply=(${${session:t}%.jsonl} $state)
+}
+
 # Rex: the same for each Rex terminal (breadcrumb written by
 # ~/.omp/agent/extensions/rex-resume.ts). Rex never reuses a block id, so the
 # breadcrumb holds only the session file and the `quit` mark.
@@ -251,7 +261,13 @@ function omp() {
 # running (no `quit` mark). Runs once, at the first prompt.
 function _herdr_omp_resume() {
   precmd_functions=(${precmd_functions:#_herdr_omp_resume})
-  { _herdr_omp_crumb || _rex_omp_crumb } && [[ $reply[2] != quit ]] && command omp --resume $reply[1]
+  local -a o c
+  { _herdr_omp_crumb || _rex_omp_crumb } && [[ $reply[2] != quit ]] && o=($reply)
+  _herdr_claude_crumb && [[ $reply[2] != quit ]] && c=($reply)
+  # Both live: the newer breadcrumb wins.
+  if (( $#c )) && { (( ! $#o )) || [[ ~/.local/state/claude-herdr-resume/$HC_TERMINAL_ID -nt ~/.local/state/omp-herdr-resume/$HC_TERMINAL_ID ]] }; then
+    command claude --resume $c[1]
+  elif (( $#o )); then command omp --resume $o[1]; fi
 }
 [[ ( -n $HC_TERMINAL_ID || -n $REX_BLOCK ) && -z $OMPCODE && -o interactive ]] && precmd_functions+=(_herdr_omp_resume)
 
