@@ -271,6 +271,13 @@ function _herdr_omp_resume() {
 }
 [[ ( -n $HC_TERMINAL_ID || -n $REX_BLOCK ) && -z $OMPCODE && -o interactive ]] && precmd_functions+=(_herdr_omp_resume)
 
+# A program that is killed (SIGKILL) cannot turn off the terminal modes it set.
+# With in-band resize (mode 2048) still on, each pane resize types text such as
+# `8;70;72;1750;936t` at this prompt. Turn off the modes omp and Claude use
+# (mouse, focus, in-band resize, synchronized output, kitty keys) before each prompt.
+function _reset_tui_modes() { print -n '\e[?1000l\e[?1002l\e[?1003l\e[?1006l\e[?1004l\e[?2048l\e[?2026l\e[<u' }
+precmd_functions+=(_reset_tui_modes)
+
 # Attach to existing tmux session or create new
 function tmux() {
   if command tmux has-session 2>/dev/null; then
