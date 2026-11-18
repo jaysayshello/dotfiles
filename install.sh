@@ -170,7 +170,7 @@ echo ""
 
 # omp Configuration
 echo "🤖 Configuring omp..."
-mkdir -p ~/.omp/agent/themes ~/.omp/agent/extensions ~/Library/LaunchAgents
+mkdir -p ~/.omp/agent/themes ~/.omp/agent/extensions ~/.omp/agent/skills ~/Library/LaunchAgents
 # The real config.yml is gitignored (it can name work skills). Seed it from the live file, else the example.
 if [ ! -f "$SCRIPT_DIR/dotfiles/omp/config.yml" ]; then
   if [ -f ~/.omp/agent/config.yml ] && [ ! -L ~/.omp/agent/config.yml ]; then
@@ -186,10 +186,19 @@ done
 for ext in "$SCRIPT_DIR"/dotfiles/omp/extensions/*; do
   ln -sf "$ext" ~/.omp/agent/extensions/
 done
+# Only public skills live here; a real directory at the target is left alone.
+for skill in "$SCRIPT_DIR"/dotfiles/omp/skills/*/; do
+  target=~/.omp/agent/skills/$(basename "$skill")
+  if [ -e "$target" ] && [ ! -L "$target" ]; then
+    echo "  ⚠️  $target is a real directory, not linked"
+  else
+    ln -sfn "${skill%/}" "$target"
+  fi
+done
 # A copy, not a link: the hourly `omp update` job keeps working if the repo moves.
 cp "$SCRIPT_DIR/dotfiles/omp/launchagents/com.jay.omp-update.plist" ~/Library/LaunchAgents/
 launchctl bootstrap "gui/$(id -u)" ~/Library/LaunchAgents/com.jay.omp-update.plist 2>/dev/null || true
-echo "  ℹ️  Not tracked: auth, mcp.json (MCP servers and their headers), sessions, memory, skills"
+echo "  ℹ️  Not tracked: auth, mcp.json (MCP servers and their headers), sessions, memory, skills outside dotfiles/omp/skills"
 echo "✅ omp configured successfully"
 echo ""
 
