@@ -72,6 +72,22 @@ class ReportTest(unittest.TestCase):
         self.assertLessEqual(len(line.strip()), 110)
         self.assertTrue(line.endswith("…"))
 
+    def test_tips_go_last_and_do_not_count(self):
+        data = json.dumps([
+            {"status": "TIP", "name": "add a kind test for the new image"},
+            {"status": "PASS", "name": "render diff", "seconds": 2},
+            {"status": "TIP", "name": "second tip"},
+            {"status": "TIP", "name": "third tip is dropped"},
+        ])
+        out = run(REPORT, "-", "--plain", stdin=data)
+        self.assertEqual(out.returncode, 0)
+        self.assertEqual(out.stdout.splitlines(), [
+            "✅ PASS  render diff",
+            "💡 TIP   add a kind test for the new image",
+            "💡 TIP   second tip",
+            "1 passed · 0 failed · 2 s",
+        ])
+
     def test_bad_status_is_rejected(self):
         out = run(REPORT, "-", stdin=json.dumps([{"status": "OK", "name": "x"}]))
         self.assertEqual(out.returncode, 2)
