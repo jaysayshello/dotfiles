@@ -29,3 +29,4 @@ dotfiles/pi/settings.json
 
 # The real omp config.yml can name work skills; only the example is tracked.
 dotfiles/omp/config.yml
+__pycache__/

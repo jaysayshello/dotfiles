@@ -16,7 +16,8 @@ Plan (JSON):
       "where": "values.yaml:14", # optional file:line or resource
       "skip": "reason"           # optional: do not run, report SKIP with this reason
     }
-  ]
+  ],
+  "tips": ["add a kind test for the new image"]   # optional, up to 2 recommended checks
 }
 
 The command output goes only to the log. A results JSON file is written next
@@ -35,6 +36,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+sys.dont_write_bytecode = True  # the skill folder can be in a synced git repo
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import report  # noqa: E402
 
@@ -135,6 +137,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         plan = json.loads(plan_path.read_text(encoding="utf-8"))
         checks = plan["checks"]
+        tips = [str(t) for t in plan.get("tips", [])]
         for i, check in enumerate(checks):
             if not check.get("name") or not (check.get("cmd") or check.get("skip")):
                 raise ValueError(f"check {i + 1} needs a name and a cmd (or a skip reason)")
@@ -157,6 +160,7 @@ def main(argv: list[str] | None = None) -> int:
             remaining = budget - (time.monotonic() - start)
             results.append(run_one(check, base_dir, log, remaining))
     total = time.monotonic() - start
+    results += [{"status": "TIP", "name": tip, "detail": "", "where": "", "seconds": 0.0} for tip in tips]
 
     results_path = log_path.with_suffix(".json")
     results_path.write_text(

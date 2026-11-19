@@ -113,7 +113,29 @@ CAUTION: Never deploy, enable, or change a rule from `/test`. Use only GET reque
 
 - Always check the digest, not the tag. A tag can move.
 - Use `--insecure-ignore-tlog=true` when the signature has no transparency log entry, for example a private registry signature.
-- A kind test is slow. Use it only when the image must start in Kubernetes to prove the change. Ask the user first if it takes more than 1 minute.
+- A kind test is slow. Use it only when the image must start in Kubernetes to prove the change, or when a rule in `reviewer.md` asks for it. Without a rule, ask the user first if it takes more than 1 minute.
+
+### kind test: the deploy works and no package is missing
+
+Use this test when a change replaces images, for example a move to signed or minimal images. A minimal image often lacks a shell, a tool, or a file capability that the old image had.
+
+1. Make sure that Docker is on: `docker info`. If it is off, report SKIP with the reason "Docker is not on".
+2. Make the cluster: `kind create cluster --name test-<x> --wait 60s`. Use 1 control plane. Add workers only if the chart uses anti-affinity.
+3. Load the images by digest: `docker pull <image>@<digest>`, then `kind load docker-image <image>@<digest> --name test-<x>`. If the registry needs credentials, make an `imagePullSecret` in the kind cluster.
+4. Render the chart with the values of the real environment. Put the parts that kind cannot have in a small overlay file. Examples are cloud IAM annotations, a service mesh, or an SSO connector. Keep the images, the `securityContext`, the commands, and the probes the same as the real values.
+5. Apply the render to the kind cluster only: `kubectl --context kind-test-<x> apply -f <render>`.
+6. Assert these results. Make each one a separate check:
+   - Each pod is Ready with 0 restarts: `kubectl --context kind-test-<x> wait --for=condition=Ready pod --all -A --timeout=180s`, then read the restart counts.
+   - Each init container exited 0.
+   - The logs have no sign of a missing package. Scan the current and the previous logs for `not found`, `No such file`, `exec format error`, `permission denied`, and `operation not permitted`.
+   - Each command that the chart runs exists in its image. Read the commands, the scripts, and the exec probes from the render. Run `kubectl exec <pod> -c <container> -- sh -c 'command -v <cmd>'` for each one. If the image has no shell, use `kubectl debug` with a copy of the pod.
+   - A binary has no file capability that the `securityContext` drops. Run `getcap <binary>` in the image, or check the start error `Operation not permitted`.
+   - One simple function of the app works, for example a login, a sync, or an HTTP 200 on the health endpoint.
+7. Delete the cluster in the same plan, also when a check fails: `kind delete cluster --name test-<x>`.
+
+- Red check: run the same test with the old images. The old images must pass the same assertions. Then a failure comes from the new images, not from the kind setup.
+- Give the kind test a `timeout` of about 300 s and the plan a `budget` of about 600 s.
+- Write the overlay file and the list of differences from the real environment in the log. A reader must see what kind did not prove.
 
 ## 7. Scripts that call other CLIs
 

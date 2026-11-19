@@ -6,7 +6,7 @@ or a TSV file with the columns: status, name, detail, where, seconds.
 Use "-" to read from stdin.
 
 Each result has:
-  status   PASS, FAIL, WARN, or SKIP
+  status   PASS, FAIL, WARN, SKIP, or TIP
   name     short check name, one line
   detail   plain words: what failed (FAIL), or why (WARN, SKIP)
   where    optional file:line or resource name
@@ -14,6 +14,7 @@ Each result has:
 
 Output:
   one line per check, 1-2 detail lines per FAIL, 1 per WARN or SKIP,
+  then up to 2 TIP lines (a recommended check, not counted in the totals),
   then one totals line with the run time and the log path.
 
 Exit code: 1 if any check failed, 2 for bad input, else 0.
@@ -29,10 +30,12 @@ import os
 import re
 import sys
 
-STATUSES = ("PASS", "FAIL", "WARN", "SKIP")
-MARKS = {"PASS": "✅", "FAIL": "❌", "WARN": "⚠️ ", "SKIP": "⏭️ "}
-COLOURS = {"PASS": "32", "FAIL": "31", "WARN": "33", "SKIP": "33"}
-DETAIL_LINES = {"PASS": 0, "FAIL": 2, "WARN": 1, "SKIP": 1}
+STATUSES = ("PASS", "FAIL", "WARN", "SKIP", "TIP")
+MARKS = {"PASS": "✅", "FAIL": "❌", "WARN": "⚠️ ", "SKIP": "⏭️ ", "TIP": "💡"}
+COLOURS = {"PASS": "32", "FAIL": "31", "WARN": "33", "SKIP": "33", "TIP": "36"}
+LABELS = {"TIP": "TIP "}
+DETAIL_LINES = {"PASS": 0, "FAIL": 2, "WARN": 1, "SKIP": 1, "TIP": 0}
+MAX_TIPS = 2
 MAX_WIDTH = 110
 INDENT = " " * 9
 
@@ -128,15 +131,17 @@ def render(results: list[dict], log: str, total_seconds: float | None, colour: b
 
     out = []
     counts = {status: 0 for status in STATUSES}
-    for result in results:
+    checks = [r for r in results if r["status"] != "TIP"]
+    tips = [r for r in results if r["status"] == "TIP"][:MAX_TIPS]
+    for result in checks + tips:
         status = result["status"]
         counts[status] += 1
-        label = paint("1;" + COLOURS[status], status)
+        label = paint("1;" + COLOURS[status], LABELS.get(status, status))
         out.append(f"{MARKS[status]} {label}  {result['name']}")
         for line in detail_lines(result):
             out.append(INDENT + (paint("2", line) if status != "FAIL" else line))
 
-    seconds = total_seconds if total_seconds is not None else sum(r["seconds"] for r in results)
+    seconds = total_seconds if total_seconds is not None else sum(r["seconds"] for r in checks)
     parts = [f"{counts['PASS']} passed", f"{counts['FAIL']} failed"]
     if counts["WARN"]:
         parts.append(f"{counts['WARN']} warned")
@@ -148,7 +153,7 @@ def render(results: list[dict], log: str, total_seconds: float | None, colour: b
     summary = " · ".join(parts)
     if counts["FAIL"]:
         summary = paint("1;31", summary)
-    elif counts["WARN"] or counts["SKIP"] or not results:
+    elif counts["WARN"] or counts["SKIP"] or not checks:
         summary = paint("1;33", summary)
     else:
         summary = paint("1;32", summary)
