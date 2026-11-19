@@ -186,13 +186,16 @@ done
 for ext in "$SCRIPT_DIR"/dotfiles/omp/extensions/*; do
   ln -sf "$ext" ~/.omp/agent/extensions/
 done
-# Only public skills live here; a real directory at the target is left alone.
+# Only public skills live here. A skill that already exists locally (a real
+# directory, or a link to another copy with private values) is left alone.
 for skill in "$SCRIPT_DIR"/dotfiles/omp/skills/*/; do
   target=~/.omp/agent/skills/$(basename "$skill")
-  if [ -e "$target" ] && [ ! -L "$target" ]; then
-    echo "  ⚠️  $target is a real directory, not linked"
+  if [ -L "$target" ] && [ "$(readlink "$target")" = "${skill%/}" ]; then
+    continue
+  elif [ -e "$target" ] || [ -L "$target" ]; then
+    echo "  ⚠️  $target already exists locally, not linked"
   else
-    ln -sfn "${skill%/}" "$target"
+    ln -s "${skill%/}" "$target"
   fi
 done
 # A copy, not a link: the hourly `omp update` job keeps working if the repo moves.
