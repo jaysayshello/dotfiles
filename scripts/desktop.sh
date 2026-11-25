@@ -5,6 +5,6 @@ rm -rf ~/.yabairc
 rm -rf ~/.skhdrc
 cp ~/.desktop_yabai ~/.yabairc
 cp ~/.desktop_skhdrc ~/.skhdrc
-launchctl kickstart -k "gui/$(id -u)/com.koekeishiya.yabai"
-launchctl kickstart -k "gui/$(id -u)/com.koekeishiya.skhd"
+yabai --restart-service || yabai --start-service
+skhd --restart-service || skhd --start-service
 bash "$(dirname "$0")/widgets.sh" desktop
