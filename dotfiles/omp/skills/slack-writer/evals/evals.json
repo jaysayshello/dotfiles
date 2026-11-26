@@ -1,0 +1,79 @@
+{
+  "skill_name": "slack-writer",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "level 5 please. need to tell #eng why CI was broken this morning. the github actions self-hosted runners ran out of disk because we weren't pruning the docker layer cache, so every job after ~8am failed. we added a nightly docker system prune step and cleared the disks, it's fixed now. people need to re-run any job that failed between 8 and 10:30am ET",
+      "expected_output": "A very short message (1-2 sentences, 30 prose words or fewer) that states CI is fixed and that people must re-run jobs that failed 8-10:30am ET. Any cause sentence is in STE: no contractions, no -ing verbs, no phrasal verbs, 12 words or fewer per sentence. Level 5 reported in the confirmation.",
+      "files": [],
+      "expectations": [
+        "No em dashes in the message",
+        "No markdown headers or **double-asterisk** bold",
+        "No heading lines (no title line, no bold label alone on a line)",
+        "Confirmation reports Level 5",
+        "30 prose words or fewer (level 5)",
+        "Every sentence is 12 words or fewer (level 5 cap)",
+        "Tells readers to re-run jobs that failed 8 to 10:30am ET",
+        "No contractions (STE)",
+        "No -ing verb forms (STE)",
+        "No phrasal verbs (STE)"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "write a slack post for #engineering at level 1. we're moving everyone off IAM users with long-lived access keys and onto IAM Identity Center (SSO). reasons: leaked keys stay valid until someone notices, we had 3 keys show up in public github repos last quarter, and auditors flagged it. SSO gives 8 hour sessions tied to okta. what people need to do before Nov 30: install aws cli v2, run aws configure sso with start url https://example.awsapps.com/start, test with aws sts get-caller-identity, then delete their old access keys. after nov 30 we disable all remaining IAM user keys. questions to #security-help",
+      "expected_output": "A detailed message (more than 120 and at most 350 prose words) with background, reasons, numbered steps, the Nov 30 deadline, and the questions channel. Explanations and steps are in STE: imperative steps, one instruction per step, no contractions, no -ing verbs, no phrasal verbs, sentences 25 words or fewer. A caution not to delete old keys before testing SSO comes before the delete step. Level 1 reported.",
+      "files": [],
+      "expectations": [
+        "No em dashes in the message",
+        "No markdown headers or **double-asterisk** bold",
+        "No heading lines (no title line, no bold label alone on a line)",
+        "Confirmation reports Level 1",
+        "Between 121 and 350 prose words (level 1)",
+        "Every sentence is 25 words or fewer (STE cap)",
+        "Steps are a numbered list with at least 4 items",
+        "Mentions Nov 30 deadline, start URL, and #security-help",
+        "No contractions (STE)",
+        "No -ing verb forms (STE)",
+        "No phrasal verbs (STE)",
+        "Caution not to delete old keys comes before the delete instruction (STE warning order)",
+        "Steps are imperative, one instruction each (STE)",
+        "Adds no facts that the prompt did not give"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "draft a slack reply to Sam in #security-help thanking them for flagging the Wiz alert on the status-page-assets S3 bucket. it's a false positive, the bucket is public on purpose because it serves the images and css for status.example.com. nothing sensitive in it, we checked. I added an ignore rule in terraform for that bucket only https://github.com/example-org/infra/pull/123",
+      "expected_output": "A casual reply at default level 3 (120 prose words or fewer). The thanks to Sam is in normal casual voice. The explanation of why the bucket is public and what was done is in STE: no contractions, no -ing verbs, no phrasal verbs. PR link uses [text](url). Level 3 (default) reported.",
+      "files": [],
+      "expectations": [
+        "No em dashes in the message",
+        "No markdown headers or **double-asterisk** bold",
+        "No heading lines (no title line, no bold label alone on a line)",
+        "Confirmation reports Level 3",
+        "120 prose words or fewer (level 3)",
+        "Thanks Sam",
+        "PR link uses [text](url) form",
+        "Explanation sentences have no -ing verb forms (STE in explanation only)",
+        "No phrasal verbs (STE)",
+        "Explanation sentences have no contractions (STE in explanation only)"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "level 4 slack announcement: planned maintenance this saturday oct 17 from 2-4am ET, we're upgrading the prod postgres cluster for the checkout service from 14 to 16. checkout will be unavailable the whole window. owner is me (@alex). rollback plan is restore from the pre-upgrade snapshot.",
+      "expected_output": "A short announcement (60 prose words or fewer) that states the date, time with timezone, that checkout is unavailable, and prod. Optional fields such as rollback detail are dropped or minimal. Correct mrkdwn bold, no headers, no em dashes. Any explanation sentence is in STE. Level 4 reported.",
+      "files": [],
+      "expectations": [
+        "No em dashes in the message",
+        "No markdown headers or **double-asterisk** bold",
+        "No heading lines (no title line, no bold label alone on a line)",
+        "Confirmation reports Level 4",
+        "60 prose words or fewer (level 4)",
+        "Every sentence is 15 words or fewer (level 4 cap)",
+        "States Oct 17, 2 to 4am ET, and checkout unavailable",
+        "No contractions (STE)"
+      ]
+    }
+  ]
+}
