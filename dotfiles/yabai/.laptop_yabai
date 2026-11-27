@@ -48,4 +48,13 @@ yabai -m config window_gap                   08
 yabai -m rule --add app="^System Settings$" layer=above manage=off
 # Herdr keeps its own window size (window.json); left untiled, it stays the size of a lone tile.
 yabai -m rule --add app="^Herdr$" manage=off
+# The rule only reaches Herdr windows opened after it. yabai tiles the open ones first, maybe at
+# half width, so give each the full space area (zoom-fullscreen), then float it at that frame.
+yabai -m query --windows | jq -r '.[] | select(.app == "Herdr" and ."is-floating" == false and ."has-ax-reference") | .id' |
+  while read -r id; do
+    yabai -m window "$id" --toggle zoom-fullscreen
+    frame=$(yabai -m query --windows --window "$id" | jq -r '.frame | "\(.x|floor):\(.y|floor) \(.w|floor):\(.h|floor)"')
+    yabai -m window "$id" --toggle float
+    yabai -m window "$id" --move "abs:${frame% *}" --resize "abs:${frame#* }"
+  done
 
