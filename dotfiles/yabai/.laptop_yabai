@@ -46,4 +46,6 @@ yabai -m config right_padding                64
 yabai -m config window_gap                   08
 
 yabai -m rule --add app="^System Settings$" layer=above manage=off
+# Herdr keeps its own window size (window.json); left untiled, it stays the size of a lone tile.
+yabai -m rule --add app="^Herdr$" manage=off
 
